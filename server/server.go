@@ -3,7 +3,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"distributed-cache.io/common"
 	"github.com/panjf2000/gnet"
@@ -73,7 +74,12 @@ func (s *Server) defaultCallback() Callback {
 }
 
 func (s *Server) OnInitComplete(srv gnet.Server) (action gnet.Action) {
-	log.Printf("Test codec server is listening on %s (multi-cores: %t, loops: %d)\n", srv.Addr.String(), srv.Multicore, srv.NumEventLoop)
+	log.Printf("Test codec server is listening on %s (multi-cores: %t, loops: %d)", srv.Addr.String(), srv.Multicore, srv.NumEventLoop)
+	return
+}
+
+func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
+	log.Printf("Connection opened. Local Address: %s, Remote Address: %s", c.LocalAddr().String(), c.RemoteAddr().String())
 	return
 }
 
@@ -89,8 +95,9 @@ func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
 	var message Message
 	json.Unmarshal(frame, &message)
-	log.Printf("Message : %s\n", message.String())
+	log.Printf("Local Address: %s, Remote Address: %s, Message : %s", c.LocalAddr().String(), c.RemoteAddr().String(), message.String())
 	response := s.callback(message)
+	log.Printf("Response: %s", response.String())
 	out, err := json.Marshal(response)
 	if err != nil {
 		log.Panicf("ERROR Unmarshalling, %s", response.String())
@@ -99,7 +106,7 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 }
 
 // {"op":"GET","key":"b"}
-// {"op":"PUT","key":"LOL","value":"12345"}
+// {"op":"PUT","key":"LOL","value":"123456"}
 // {"op":"PUT","key":"LMAO","value":"abcde"}
 // {"op":"GET","key":"LOL"}
 // {"op":"GET","key":"LMAO"}

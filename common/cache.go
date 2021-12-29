@@ -1,6 +1,8 @@
 package common
 
-import "sync"
+import (
+	"sync"
+)
 
 type CacheValue struct {
 	value string
@@ -28,9 +30,9 @@ func (cache *Cache) Put(key string, value string) bool {
 func (cache *Cache) Get(key string) string {
 	cache.mutex.RLock()
 	value := cache.m[key]
+	cache.mutex.RUnlock()
 	if value == nil {
 		return ""
 	}
-	cache.mutex.RUnlock()
 	return value.value.value
 }
