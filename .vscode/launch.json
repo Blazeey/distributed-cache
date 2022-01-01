@@ -5,11 +5,20 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Run MAIN",
+			"name": "9000",
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",
-			"program": "${workspaceFolder}/main.go"
+			"program": "${workspaceFolder}/main.go",
+			"args": ["-port", "9000"]
+		},
+		{
+			"name": "9001",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "${workspaceFolder}/main.go",
+			"args": ["-port", "9001", "-node", "0.0.0.0:11000", "-membershipPort", "11001"]
 		}
 	]
 }

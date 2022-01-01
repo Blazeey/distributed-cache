@@ -1,20 +1,25 @@
 package server
 
 import (
-	"sync"
+	"os"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"distributed-cache.io/common"
 )
 
-func Initialize(port int, multicore bool) {
+func Initialize(port int, multicore bool, healthyNode string, membershipPort int) {
 	c := common.InitCache()
 
-	wg := new(sync.WaitGroup)
-	wg.Add(2)
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors:   false,
+		FullTimestamp:   true,
+		TimestampFormat: time.RFC822,
+	})
+	log.SetOutput(os.Stdout)
 
-	go InitServer(9000, true, func(message Message) (response Response) {
+	processMessage := func(message Message) (response Response) {
 		log.Printf("PROCESSING MESSAGE : %s", message)
 		if message.Op == "GET" {
 			response.Message = c.Get(message.Key)
@@ -24,6 +29,15 @@ func Initialize(port int, multicore bool) {
 		}
 		response.Code = 200
 		return
-	})
-	wg.Wait()
+	}
+
+	serverConfig := ServerConfig{
+		serverPort:     port,
+		membershipPort: membershipPort,
+		multicore:      multicore,
+		healthyNode:    healthyNode,
+		callback:       processMessage,
+	}
+
+	InitServer(serverConfig)
 }
