@@ -14,18 +14,15 @@ import (
 	"github.com/panjf2000/gnet"
 )
 
-type Callback func(message Message) (respone Response)
-
 type Operation string
 
 type Server struct {
 	*gnet.EventServer
-	port         int
-	grpcPort     int
-	multicore    bool
-	callback     Callback
-	grpcServer   *grpc.Server
-	cacheService *cache.CacheService
+	port           int
+	grpcPort       int
+	multicore      bool
+	grpcServer     *grpc.Server
+	requestHandler *RequestHandler
 }
 
 type ServerConfig struct {
@@ -34,7 +31,6 @@ type ServerConfig struct {
 	grpcPort       int
 	multicore      bool
 	healthyNode    string
-	callback       Callback
 }
 
 const (
@@ -51,7 +47,7 @@ type Message struct {
 
 type Response struct {
 	Message string
-	Code    int
+	Code    int32
 }
 
 func (m *Message) String() string {
@@ -67,17 +63,14 @@ func InitServer(config ServerConfig) Server {
 	server.port = config.serverPort
 	server.multicore = config.multicore
 	server.grpcPort = config.grpcPort
-	if config.callback == nil {
-		server.callback = server.defaultCallback()
-	} else {
-		server.callback = config.callback
-	}
 
 	localCache := common.InitCache()
 	grpcServer := grpc.NewServer()
 	cacheService := &cache.CacheService{Cache: localCache}
 	server.grpcServer = grpcServer
-	server.cacheService = cacheService
+	server.requestHandler = &RequestHandler{
+		cache: cacheService,
+	}
 	cache.RegisterCacheServer(grpcServer, cacheService)
 
 	wg := new(sync.WaitGroup)
@@ -95,7 +88,7 @@ func InitServer(config ServerConfig) Server {
 }
 
 func startGrpcServer(server *Server) {
-	ip := common.GetOutboundIP()
+	ip := common.CurrentIP
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip.String(), server.grpcPort))
 	if err != nil {
 		log.Fatalf("Failed to listen for gRPC: %v", err)
@@ -110,15 +103,6 @@ func startCodecServer(server *Server) {
 	err := gnet.Serve(server, fmt.Sprintf("tcp://:%d", server.port), gnet.WithMulticore(server.multicore))
 	if err != nil {
 		panic(err)
-	}
-}
-
-func (s *Server) defaultCallback() Callback {
-	return func(message Message) (response Response) {
-		m, _ := json.Marshal(message)
-		response.Code = 200
-		response.Message = string(m)
-		return
 	}
 }
 
@@ -145,7 +129,7 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 	var message Message
 	json.Unmarshal(frame, &message)
 	log.Infof("Local Address: %s, Remote Address: %s, Message : %s", c.LocalAddr().String(), c.RemoteAddr().String(), message.String())
-	response := s.callback(message)
+	response := s.requestHandler.processMessage(message)
 	log.Infof("Response: %s", response.String())
 	out, err := json.Marshal(response)
 	if err != nil {

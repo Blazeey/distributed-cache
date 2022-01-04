@@ -12,9 +12,10 @@ type SortedCircularLinkedList struct {
 }
 
 type RingNode struct {
-	Host   *smudge.Node
-	Hash   uint32
-	Tokens []uint32
+	Host          *smudge.Node
+	Hash          uint32
+	Tokens        []uint32
+	IsCurrentNode bool
 }
 
 type node struct {
@@ -28,18 +29,26 @@ func (sll *SortedCircularLinkedList) Add(value *RingNode) {
 	newValue := value.Hash
 	if head == nil {
 		sll.head = newNode
-	} else if head.next == nil {
+		newNode.next = newNode
+	} else if head.next == head {
 		current := head.value.Hash
 		if newValue <= current {
 			sll.head = newNode
 			newNode.next = head
+			head.next = newNode
 		} else {
 			head.next = newNode
+			newNode.next = head
 		}
 	} else {
 		n := head
-		for ; n.next != nil; n = n.next {
-			if newValue < n.next.value.Hash {
+		for ; ; n = n.next {
+			if n.value.Hash < newValue && newValue < n.next.value.Hash {
+				break
+			} else if n.next.value.Hash < n.value.Hash {
+				if newValue < n.value.Hash {
+					sll.head = newNode
+				}
 				break
 			}
 		}
@@ -60,17 +69,21 @@ func (sll *SortedCircularLinkedList) IsValueExist(value *RingNode) (exists bool)
 
 func (sll *SortedCircularLinkedList) PrintNodes() {
 	s := ""
-	for n := sll.head; n != nil; n = n.next {
+	n := sll.head
+	for ok := true; ok; ok = !(n == sll.head) {
 		s = fmt.Sprintf("%s %d ", s, n.value.Hash)
+		n = n.next
 	}
 	log.Infof("[ %s ]", s)
 }
 
-func (sll *SortedCircularLinkedList) GetNodeWithGreaterHash(hash uint32) *RingNode {
-	for n := sll.head; n != nil; n = n.next {
-		if n.value.Hash > hash {
+func (sll *SortedCircularLinkedList) GetNodeWithGreaterOrEqualHash(hash uint32) *RingNode {
+	n := sll.head
+	for ok := true; ok; ok = !(n == sll.head) {
+		if n.value.Hash >= hash {
 			return n.value
 		}
+		n = n.next
 	}
 	return sll.head.value
 }

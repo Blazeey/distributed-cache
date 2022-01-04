@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"unsafe"
 
 	"distributed-cache.io/common"
@@ -41,9 +42,10 @@ var tokenRing = TokenRing{
 func newRingNode(node *smudge.Node) *common.RingNode {
 	hash, tokens := getTokens(node.Address())
 	ringNode := &common.RingNode{
-		Host:   node,
-		Hash:   hash,
-		Tokens: tokens,
+		Host:          node,
+		Hash:          hash,
+		Tokens:        tokens,
+		IsCurrentNode: node.Address() == fmt.Sprintf("%s:%d", common.CurrentIP.String(), smudge.GetListenPort()),
 	}
 	return ringNode
 }
@@ -57,7 +59,7 @@ func (ring TokenRing) addNode(node *common.RingNode) {
 }
 
 func (ring TokenRing) getAssignedNode(hash uint32) *common.RingNode {
-	return ring.nodes.GetNodeWithGreaterHash(hash)
+	return ring.nodes.GetNodeWithGreaterOrEqualHash(hash)
 }
 
 func (l StatusChangeListener) OnChange(node *smudge.Node, status smudge.NodeStatus) {
@@ -85,7 +87,7 @@ func InitMembershipServer(config MembershipConfig) {
 	smudge.SetLogger(LogrusLogger{})
 	smudge.SetListenPort(config.listenPort)
 	smudge.SetHeartbeatMillis(HEARBEAT_MS)
-	smudge.SetListenIP(common.GetOutboundIP())
+	smudge.SetListenIP(common.CurrentIP)
 
 	smudge.AddStatusListener(StatusChangeListener{})
 	smudge.AddBroadcastListener(BroadcastListener{})
