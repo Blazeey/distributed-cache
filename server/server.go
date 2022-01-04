@@ -3,32 +3,34 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 
+	"distributed-cache.io/cache"
 	"distributed-cache.io/common"
 	"github.com/panjf2000/gnet"
 )
-
-type Callback func(message Message) (respone Response)
 
 type Operation string
 
 type Server struct {
 	*gnet.EventServer
-	port      int
-	multicore bool
-	callback  Callback
-	cache     *common.Cache
+	port           int
+	grpcPort       int
+	multicore      bool
+	grpcServer     *grpc.Server
+	requestHandler *RequestHandler
 }
 
 type ServerConfig struct {
 	serverPort     int
 	membershipPort int
+	grpcPort       int
 	multicore      bool
 	healthyNode    string
-	callback       Callback
 }
 
 const (
@@ -45,7 +47,7 @@ type Message struct {
 
 type Response struct {
 	Message string
-	Code    int
+	Code    int32
 }
 
 func (m *Message) String() string {
@@ -60,17 +62,22 @@ func InitServer(config ServerConfig) Server {
 	server := new(Server)
 	server.port = config.serverPort
 	server.multicore = config.multicore
-	server.cache = common.InitCache()
-	if config.callback == nil {
-		server.callback = server.defaultCallback()
-	} else {
-		server.callback = config.callback
+	server.grpcPort = config.grpcPort
+
+	localCache := common.InitCache()
+	grpcServer := grpc.NewServer()
+	cacheService := &cache.CacheService{Cache: localCache}
+	server.grpcServer = grpcServer
+	server.requestHandler = &RequestHandler{
+		cache: cacheService,
 	}
+	cache.RegisterCacheServer(grpcServer, cacheService)
 
 	wg := new(sync.WaitGroup)
 	wg.Add(5)
 
 	go startCodecServer(server)
+	go startGrpcServer(server)
 	go InitMembershipServer(MembershipConfig{
 		listenPort:  config.membershipPort,
 		healthyNode: config.healthyNode,
@@ -80,19 +87,22 @@ func InitServer(config ServerConfig) Server {
 	return *server
 }
 
+func startGrpcServer(server *Server) {
+	ip := common.CurrentIP
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip.String(), server.grpcPort))
+	if err != nil {
+		log.Fatalf("Failed to listen for gRPC: %v", err)
+	}
+	log.Infof("Starting gRPC server at %v", listener.Addr())
+	if err := server.grpcServer.Serve(listener); err != nil {
+		log.Fatalf("Failed to serve gRPC: %v", err)
+	}
+}
+
 func startCodecServer(server *Server) {
 	err := gnet.Serve(server, fmt.Sprintf("tcp://:%d", server.port), gnet.WithMulticore(server.multicore))
 	if err != nil {
 		panic(err)
-	}
-}
-
-func (s *Server) defaultCallback() Callback {
-	return func(message Message) (response Response) {
-		m, _ := json.Marshal(message)
-		response.Code = 200
-		response.Message = string(m)
-		return
 	}
 }
 
@@ -119,7 +129,7 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 	var message Message
 	json.Unmarshal(frame, &message)
 	log.Infof("Local Address: %s, Remote Address: %s, Message : %s", c.LocalAddr().String(), c.RemoteAddr().String(), message.String())
-	response := s.callback(message)
+	response := s.requestHandler.processMessage(message)
 	log.Infof("Response: %s", response.String())
 	out, err := json.Marshal(response)
 	if err != nil {
@@ -133,3 +143,5 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 // {"op":"PUT","key":"LMAO","value":"abcde"}
 // {"op":"GET","key":"LOL"}
 // {"op":"GET","key":"LMAO"}
+// {"op":"GET","key":"LOLIIFOXX"}
+// {"op":"PUT","key":"LOLIIFOXX","value":"HELLO WHASSSSSSUPPP - DISTRIBUTED CACHE"}
