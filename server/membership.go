@@ -1,7 +1,6 @@
 package server
 
 import (
-	"net"
 	"unsafe"
 
 	"distributed-cache.io/common"
@@ -32,39 +31,33 @@ type LogrusLogger struct {
 }
 
 type TokenRing struct {
-	nodes *common.SortedLinkedList
-}
-
-type RingNode struct {
-	host   *smudge.Node
-	hash   uint32
-	tokens []uint32
+	nodes *common.SortedCircularLinkedList
 }
 
 var tokenRing = TokenRing{
-	nodes: new(common.SortedLinkedList),
+	nodes: new(common.SortedCircularLinkedList),
 }
 
-func (node *RingNode) Value() uint32 {
-	return node.hash
-}
-
-func newRingNode(node *smudge.Node) *RingNode {
+func newRingNode(node *smudge.Node) *common.RingNode {
 	hash, tokens := getTokens(node.Address())
-	ringNode := &RingNode{
-		host:   node,
-		hash:   hash,
-		tokens: tokens,
+	ringNode := &common.RingNode{
+		Host:   node,
+		Hash:   hash,
+		Tokens: tokens,
 	}
 	return ringNode
 }
 
-func (ring TokenRing) isNodePresentInRing(node *RingNode) (exist bool) {
+func (ring TokenRing) isNodePresentInRing(node *common.RingNode) (exist bool) {
 	return ring.nodes.IsValueExist(node)
 }
 
-func (ring TokenRing) addNode(node *RingNode) {
+func (ring TokenRing) addNode(node *common.RingNode) {
 	ring.nodes.Add(node)
+}
+
+func (ring TokenRing) getAssignedNode(hash uint32) *common.RingNode {
+	return ring.nodes.GetNodeWithGreaterHash(hash)
 }
 
 func (l StatusChangeListener) OnChange(node *smudge.Node, status smudge.NodeStatus) {
@@ -92,7 +85,7 @@ func InitMembershipServer(config MembershipConfig) {
 	smudge.SetLogger(LogrusLogger{})
 	smudge.SetListenPort(config.listenPort)
 	smudge.SetHeartbeatMillis(HEARBEAT_MS)
-	smudge.SetListenIP(getOutboundIP())
+	smudge.SetListenIP(common.GetOutboundIP())
 
 	smudge.AddStatusListener(StatusChangeListener{})
 	smudge.AddBroadcastListener(BroadcastListener{})
@@ -105,16 +98,6 @@ func InitMembershipServer(config MembershipConfig) {
 	}
 
 	smudge.Begin()
-}
-
-func getOutboundIP() net.IP {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP
 }
 
 func (l LogrusLogger) Log(level smudge.LogLevel, a ...interface{}) (n int, err error) {

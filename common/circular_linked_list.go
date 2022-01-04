@@ -1,34 +1,37 @@
 package common
 
 import (
+	"fmt"
+
+	"github.com/clockworksoul/smudge"
 	log "github.com/sirupsen/logrus"
 )
 
-type SortedLinkedList struct {
+type SortedCircularLinkedList struct {
 	head *node
 }
 
+type RingNode struct {
+	Host   *smudge.Node
+	Hash   uint32
+	Tokens []uint32
+}
+
 type node struct {
-	value SortValue
+	value *RingNode
 	next  *node
 }
 
-type SortValue interface {
-	Value() uint32
-}
-
-type Comparator func(newNode interface{}, existingNode interface{}) bool
-
-func (cll *SortedLinkedList) Add(value SortValue) {
+func (sll *SortedCircularLinkedList) Add(value *RingNode) {
 	newNode := &node{value: value}
-	head := cll.head
-	newValue := value.Value()
+	head := sll.head
+	newValue := value.Hash
 	if head == nil {
-		cll.head = newNode
+		sll.head = newNode
 	} else if head.next == nil {
-		current := head.value.Value()
+		current := head.value.Hash
 		if newValue <= current {
-			cll.head = newNode
+			sll.head = newNode
 			newNode.next = head
 		} else {
 			head.next = newNode
@@ -36,7 +39,7 @@ func (cll *SortedLinkedList) Add(value SortValue) {
 	} else {
 		n := head
 		for ; n.next != nil; n = n.next {
-			if newValue < n.next.value.Value() {
+			if newValue < n.next.value.Hash {
 				break
 			}
 		}
@@ -45,26 +48,29 @@ func (cll *SortedLinkedList) Add(value SortValue) {
 	}
 }
 
-func (cll *SortedLinkedList) IsValueExist(value SortValue) (exists bool) {
+func (sll *SortedCircularLinkedList) IsValueExist(value *RingNode) (exists bool) {
 	exists = false
-	for n := cll.head; n != nil; n = n.next {
-		if n.value.Value() == value.Value() {
+	for n := sll.head; n != nil; n = n.next {
+		if n.value.Hash == value.Hash {
 			return true
 		}
 	}
 	return
 }
 
-type Val struct {
-	V uint32
-}
-
-func (x *Val) Value() uint32 {
-	return x.V
-}
-
-func (cll *SortedLinkedList) PrintNodes() {
-	for n := cll.head; n != nil; n = n.next {
-		log.Infof("VAL : %d", n.value.Value())
+func (sll *SortedCircularLinkedList) PrintNodes() {
+	s := ""
+	for n := sll.head; n != nil; n = n.next {
+		s = fmt.Sprintf("%s %d ", s, n.value.Hash)
 	}
+	log.Infof("[ %s ]", s)
+}
+
+func (sll *SortedCircularLinkedList) GetNodeWithGreaterHash(hash uint32) *RingNode {
+	for n := sll.head; n != nil; n = n.next {
+		if n.value.Hash > hash {
+			return n.value
+		}
+	}
+	return sll.head.value
 }

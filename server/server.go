@@ -3,10 +3,13 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 
+	"distributed-cache.io/cache"
 	"distributed-cache.io/common"
 	"github.com/panjf2000/gnet"
 )
@@ -17,15 +20,18 @@ type Operation string
 
 type Server struct {
 	*gnet.EventServer
-	port      int
-	multicore bool
-	callback  Callback
-	cache     *common.Cache
+	port         int
+	grpcPort     int
+	multicore    bool
+	callback     Callback
+	grpcServer   *grpc.Server
+	cacheService *cache.CacheService
 }
 
 type ServerConfig struct {
 	serverPort     int
 	membershipPort int
+	grpcPort       int
 	multicore      bool
 	healthyNode    string
 	callback       Callback
@@ -60,17 +66,25 @@ func InitServer(config ServerConfig) Server {
 	server := new(Server)
 	server.port = config.serverPort
 	server.multicore = config.multicore
-	server.cache = common.InitCache()
+	server.grpcPort = config.grpcPort
 	if config.callback == nil {
 		server.callback = server.defaultCallback()
 	} else {
 		server.callback = config.callback
 	}
 
+	localCache := common.InitCache()
+	grpcServer := grpc.NewServer()
+	cacheService := &cache.CacheService{Cache: localCache}
+	server.grpcServer = grpcServer
+	server.cacheService = cacheService
+	cache.RegisterCacheServer(grpcServer, cacheService)
+
 	wg := new(sync.WaitGroup)
 	wg.Add(5)
 
 	go startCodecServer(server)
+	go startGrpcServer(server)
 	go InitMembershipServer(MembershipConfig{
 		listenPort:  config.membershipPort,
 		healthyNode: config.healthyNode,
@@ -78,6 +92,18 @@ func InitServer(config ServerConfig) Server {
 
 	wg.Wait()
 	return *server
+}
+
+func startGrpcServer(server *Server) {
+	ip := common.GetOutboundIP()
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip.String(), server.grpcPort))
+	if err != nil {
+		log.Fatalf("Failed to listen for gRPC: %v", err)
+	}
+	log.Infof("Starting gRPC server at %v", listener.Addr())
+	if err := server.grpcServer.Serve(listener); err != nil {
+		log.Fatalf("Failed to serve gRPC: %v", err)
+	}
 }
 
 func startCodecServer(server *Server) {

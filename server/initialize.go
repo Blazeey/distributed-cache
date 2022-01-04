@@ -9,7 +9,7 @@ import (
 	"distributed-cache.io/common"
 )
 
-func Initialize(port int, multicore bool, healthyNode string, membershipPort int) {
+func Initialize(port int, multicore bool, healthyNode string, membershipPort int, grpcPort int) {
 	c := common.InitCache()
 
 	log.SetFormatter(&log.TextFormatter{
@@ -34,6 +34,7 @@ func Initialize(port int, multicore bool, healthyNode string, membershipPort int
 	serverConfig := ServerConfig{
 		serverPort:     port,
 		membershipPort: membershipPort,
+		grpcPort:       grpcPort,
 		multicore:      multicore,
 		healthyNode:    healthyNode,
 		callback:       processMessage,
