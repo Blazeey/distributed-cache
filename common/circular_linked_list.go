@@ -59,10 +59,12 @@ func (sll *SortedCircularLinkedList) Add(value *RingNode) {
 
 func (sll *SortedCircularLinkedList) IsValueExist(value *RingNode) (exists bool) {
 	exists = false
-	for n := sll.head; n != nil; n = n.next {
+	n := sll.head
+	for ok := true; ok && n != nil; ok = !(n == sll.head) {
 		if n.value.Hash == value.Hash {
 			return true
 		}
+		n = n.next
 	}
 	return
 }

@@ -143,3 +143,5 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 // {"op":"PUT","key":"LMAO","value":"abcde"}
 // {"op":"GET","key":"LOL"}
 // {"op":"GET","key":"LMAO"}
+// {"op":"GET","key":"LOLIIFOXX"}
+// {"op":"PUT","key":"LOLIIFOXX","value":"HELLO WHASSSSSSUPPP - DISTRIBUTED CACHE"}

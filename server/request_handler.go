@@ -43,7 +43,7 @@ func (handler RequestHandler) processGetRequest(message Message) (response Respo
 	}
 	if err != nil {
 		s := fmt.Sprintf("Unable to retrieve from cache for %s", message.Key)
-		log.Fatalf(s)
+		log.Fatalf(s, err)
 		return Response{
 			Message: s,
 			Code:    500,
@@ -84,6 +84,7 @@ func (handler RequestHandler) processPutRequest(message Message) (response Respo
 func (handler RequestHandler) getRequestConnectionDetails(message Message) (isLocal bool, cacheClient cache.CacheClient) {
 	key := message.Key
 	hash := murmur3(key)
+	log.Infoln("Hash for %s is %d", key, hash)
 	nodeToRequest := tokenRing.getAssignedNode(hash)
 	isLocal = nodeToRequest.IsCurrentNode
 	if isLocal {
@@ -92,7 +93,11 @@ func (handler RequestHandler) getRequestConnectionDetails(message Message) (isLo
 	if client, ok := handler.connections[hash]; ok {
 		cacheClient = client
 	} else {
-		conn, err := grpc.Dial(nodeToRequest.Host.Address(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		// Finding gRPC port using hacky method
+		port := (nodeToRequest.Host.Port() % 10) + 9050
+		ip := nodeToRequest.Host.IP().String()
+		address := fmt.Sprintf("%s:%d", ip, port)
+		conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Fatalf("Cannot connect to %s for %s", nodeToRequest.Host.Address(), key)
 		}
