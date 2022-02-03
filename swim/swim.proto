@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package swim;
+
+option go_package = "distributed-cache.io/swim";
+
+service Swim {
+    rpc Join(JoinRequest) returns (JoinResponse) {}
+    rpc Ping(PingRequest) returns (PingResponse) {}
+    rpc SecondaryPing(SecondaryPingRequest) returns (SecondaryPingResponse) {}
+    rpc AddNode(NodeAdditionRequest) returns (NodeAdditionResponse) {}
+    rpc RemoveNode(NodeRemovalRequest) returns (NodeRemovalResponse) {}
+}
+
+enum ResponseCode {
+    SUCCESS   = 0;
+    ERROR     = 1;
+    NOT_FOUND = 2;
+}
+
+enum NodeStatus {
+    ALIVE     = 0;
+    DEAD      = 1;
+    SUSPECTED = 2;
+}
+
+message Host {
+    string ip   = 1;
+    uint32 port = 2;
+}
+
+message PingRequest {
+    Host source = 1;
+}
+
+message PingResponse {
+    ResponseCode code = 1;
+}
+
+message SecondaryPingRequest {
+    Host source     = 1;
+    Host pingTarget = 2;
+}
+
+message SecondaryPingResponse {
+    ResponseCode code = 1;
+}
+
+message NodeAdditionRequest {
+    Host source    = 1;
+    Host addedNode = 2;
+}
+
+message NodeAdditionResponse {
+    ResponseCode code = 1;
+}
+
+message NodeRemovalRequest {
+    Host source      = 1;
+    Host removedNode = 2;
+}
+
+message NodeRemovalResponse {
+    ResponseCode code = 1;
+}
+
+message NodeDetails {
+    Host host         = 1;
+    NodeStatus status = 2;
+    int64 latestPing  = 3;
+    Host statusSource = 4;
+}
+
+message JoinRequest {
+    Host source = 1;
+}
+
+message JoinResponse {
+    ResponseCode code                        = 1;
+    repeated NodeDetails groupMembershipList = 2;
+}

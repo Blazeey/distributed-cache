@@ -5,8 +5,8 @@ package cache;
 option go_package = "distributed-cache.io/cache";
 
 service Cache {
-	rpc GetFromCache (CacheGetRequest) returns (CacheGetResponse) {}
-	rpc PutIntoCache (CachePutRequest) returns (CachePutResponse) {}
+    rpc GetFromCache(CacheGetRequest) returns (CacheGetResponse) {}
+    rpc PutIntoCache(CachePutRequest) returns (CachePutResponse) {}
 }
 
 message CacheGetRequest {
@@ -14,16 +14,16 @@ message CacheGetRequest {
 }
 
 message CacheGetResponse {
-	int32 code = 1;
-	string message = 2;
+    int32 code     = 1;
+    string message = 2;
 }
 
 message CachePutRequest {
-	string key = 1;
-	string value = 2;
+    string key   = 1;
+    string value = 2;
 }
 
 message CachePutResponse {
-	int32 code = 1;
-	string message = 2;
+    int32 code     = 1;
+    string message = 2;
 }

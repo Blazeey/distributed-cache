@@ -11,6 +11,7 @@ import (
 
 	"distributed-cache.io/cache"
 	"distributed-cache.io/common"
+	"distributed-cache.io/swim"
 	"github.com/panjf2000/gnet"
 )
 
@@ -67,11 +68,21 @@ func InitServer(config ServerConfig) Server {
 	localCache := common.InitCache()
 	grpcServer := grpc.NewServer()
 	cacheService := &cache.CacheService{Cache: localCache}
+
+	// TODO: Change node
+	healthyNode := config.healthyNode
+	if healthyNode != "" {
+		healthyNode = "192.168.0.101:9050"
+	}
+	swimService := swim.InitMembershipServer(uint16(config.grpcPort), healthyNode)
+
 	server.grpcServer = grpcServer
 	server.requestHandler = &RequestHandler{
-		cache: cacheService,
+		connections: make(map[uint32]cache.CacheClient),
+		cache:       cacheService,
 	}
 	cache.RegisterCacheServer(grpcServer, cacheService)
+	swim.RegisterSwimServer(grpcServer, swimService)
 
 	wg := new(sync.WaitGroup)
 	wg.Add(5)

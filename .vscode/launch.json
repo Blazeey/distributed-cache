@@ -18,7 +18,7 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "${workspaceFolder}/main.go",
-			"args": ["-port", "9001", "-node", "0.0.0.0:11000", "-membershipPort", "11001"]
+			"args": ["-port", "9001", "-node", "0.0.0.0:11000", "-membershipPort", "11001", "-grpcPort", "9051"]
 		}
 	]
 }
