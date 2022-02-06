@@ -69,12 +69,7 @@ func InitServer(config ServerConfig) Server {
 	grpcServer := grpc.NewServer()
 	cacheService := &cache.CacheService{Cache: localCache}
 
-	// TODO: Change node
-	healthyNode := config.healthyNode
-	if healthyNode != "" {
-		healthyNode = "192.168.0.101:9050"
-	}
-	swimService := swim.InitMembershipServer(uint16(config.grpcPort), healthyNode)
+	swimService := swim.InitMembershipServer(uint16(config.grpcPort), config.healthyNode)
 
 	server.grpcServer = grpcServer
 	server.requestHandler = &RequestHandler{
@@ -89,10 +84,10 @@ func InitServer(config ServerConfig) Server {
 
 	go startCodecServer(server)
 	go startGrpcServer(server)
-	go InitMembershipServer(MembershipConfig{
-		listenPort:  config.membershipPort,
-		healthyNode: config.healthyNode,
-	})
+	// go InitMembershipServer(MembershipConfig{
+	// 	listenPort:  config.membershipPort,
+	// 	healthyNode: config.healthyNode,
+	// })
 
 	wg.Wait()
 	return *server

@@ -8,6 +8,8 @@ import (
 
 	"distributed-cache.io/common"
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type SwimService struct {
@@ -35,7 +37,7 @@ func (s SwimService) SecondaryPing(ctx context.Context, in *SecondaryPingRequest
 			Port: in.Source.Port,
 		},
 	})
-	var response *SecondaryPingResponse
+	response := &SecondaryPingResponse{}
 	if err != nil {
 		response.Code = ResponseCode_ERROR
 	} else {
@@ -58,6 +60,7 @@ func (s SwimService) AddNode(ctx context.Context, in *NodeAdditionRequest) (*Nod
 func (s SwimService) RemoveNode(ctx context.Context, in *NodeRemovalRequest) (*NodeRemovalResponse, error) {
 	log.Infof("Received RemoveNode Request from %s:%d", in.Source.Ip, in.Source.Port)
 	s.membershipList.removeNode(in.RemovedNode.Ip, uint16(in.RemovedNode.Port))
+	s.printMembership()
 	return &NodeRemovalResponse{
 		Code: ResponseCode_SUCCESS,
 	}, nil
@@ -70,9 +73,11 @@ func (s SwimService) Join(ctx context.Context, in *JoinRequest) (*JoinResponse, 
 
 	var wg sync.WaitGroup
 	for _, node := range nodes {
-		wg.Add(1)
-		client := s.client.getRemoteConnection(node.ip.String(), node.port)
-		go sendAddNodeRequests(in.Source.Ip, uint32(in.Source.Port), &wg, client)
+		if !node.isCurrentNode {
+			wg.Add(1)
+			client := s.client.getRemoteConnection(node.ip.String(), node.port)
+			go sendAddNodeRequests(in.Source.Ip, uint32(in.Source.Port), &wg, client)
+		}
 	}
 	wg.Wait()
 
@@ -83,13 +88,42 @@ func (s SwimService) Join(ctx context.Context, in *JoinRequest) (*JoinResponse, 
 	}, nil
 }
 
+func (s SwimService) sendPingRequest(ip string, port uint16) bool {
+	log.Infof("Sending Ping Reguest to %s:%d", ip, port)
+	client := s.client.getRemoteConnection(ip, port)
+	ctx, cancel := context.WithTimeout(context.Background(), PING_TIME_PERIOD)
+	defer cancel()
+	_, err := client.Ping(ctx, &PingRequest{
+		Source: &CURRENT_HOST,
+	})
+	if err != nil {
+		log.Errorf("ERROR sending Ping request to %s:%d", ip, port, err)
+	}
+	return err == nil
+}
+
+func (s SwimService) sendSecondaryPingRequest(ip string, port uint16, pingTargetIp string, pingTargetPort uint16) bool {
+	log.Infof("Sending Secondary Ping request to %s:%d", ip, port)
+	client := s.client.getRemoteConnection(ip, port)
+	ctx, cancel := context.WithTimeout(context.Background(), PROTOCOL_PERIOD-PING_TIME_PERIOD)
+	defer cancel()
+	response, err := client.SecondaryPing(ctx, &SecondaryPingRequest{
+		Source:     &CURRENT_HOST,
+		PingTarget: getHost(pingTargetIp, pingTargetPort),
+	})
+	if err != nil {
+		log.Errorf("ERROR sending Secondary Ping request to %s:%d", ip, port, err)
+	}
+	return err == nil && response.Code == ResponseCode_SUCCESS
+}
+
 func (s SwimService) sendJoinRequest(ip string, port uint16) {
 	client := s.client.getRemoteConnection(ip, port)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	log.Infof("Sending Join Request to %s:%d", ip, port)
 	response, err := client.Join(ctx, &JoinRequest{
-		Source: getHost(CURRENT_IP, LISTEN_PORT),
+		Source: &CURRENT_HOST,
 	})
 	if err != nil {
 		log.Errorf("ERROR sending join request to %s:%d", ip, port, err)
@@ -99,7 +133,6 @@ func (s SwimService) sendJoinRequest(ip string, port uint16) {
 }
 
 func (s SwimService) updateGroupMembership(list []*NodeDetails) {
-	log.Infof("Group Membership : %+v", list)
 	for _, n := range list {
 		memberNode := mapNodeDetails(n)
 		s.membershipList.addMemberNode(memberNode)
@@ -117,20 +150,23 @@ func (s SwimService) updateGroupMembership(list []*NodeDetails) {
 }
 
 func (s SwimService) printMembership() {
-	log.Info("Printing Membership Info")
-	for _, n := range s.membershipList.nodes {
-		n.format()
-	}
+	s.membershipList.printMembership()
 }
 
 func mapNodeDetails(n *NodeDetails) *node {
 	ip, port, hash := getHostIdentifiers(n.Host)
+	status := Status(n.Status)
+	isCurrentNode := CURRENT_IP == ip.String() && port == LISTEN_PORT
+	if isCurrentNode {
+		status = ALIVE
+	}
 	return &node{
-		ip:         ip,
-		port:       port,
-		hash:       hash,
-		status:     Status(n.Status),
-		latestPing: n.LatestPing,
+		ip:            ip,
+		port:          port,
+		hash:          hash,
+		status:        status,
+		latestPing:    n.LatestPing,
+		isCurrentNode: isCurrentNode,
 	}
 }
 
@@ -183,4 +219,15 @@ func sendAddNodeRequests(addedNodeIp string, addedNodePort uint32, wg *sync.Wait
 		},
 	})
 	wg.Done()
+}
+
+func handleError(err error) {
+
+	errStatus, _ := status.FromError(err)
+	log.Infoln(errStatus.Message())
+	log.Infoln(errStatus.Code())
+	if codes.InvalidArgument == errStatus.Code() {
+		// do your stuff here
+		log.Fatal()
+	}
 }
