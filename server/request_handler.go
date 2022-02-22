@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"distributed-cache.io/cache"
+	"distributed-cache.io/common"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -83,7 +84,7 @@ func (handler RequestHandler) processPutRequest(message Message) (response Respo
 
 func (handler RequestHandler) getRequestConnectionDetails(message Message) (isLocal bool, cacheClient cache.CacheClient) {
 	key := message.Key
-	hash := murmur3(key)
+	hash := common.Murmur3(key)
 	log.Infoln("Hash for %s is %d", key, hash)
 	nodeToRequest := tokenRing.getAssignedNode(hash)
 	isLocal = nodeToRequest.IsCurrentNode
@@ -96,12 +97,13 @@ func (handler RequestHandler) getRequestConnectionDetails(message Message) (isLo
 		// Finding gRPC port using hacky method
 		port := (nodeToRequest.Host.Port() % 10) + 9050
 		ip := nodeToRequest.Host.IP().String()
-		address := fmt.Sprintf("%s:%d", ip, port)
+		address := common.GetAddress(ip, port)
 		conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Fatalf("Cannot connect to %s for %s", nodeToRequest.Host.Address(), key)
 		}
 		cacheClient = cache.NewCacheClient(conn)
+		handler.connections[hash] = cacheClient
 	}
 	return
 }

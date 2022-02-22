@@ -1,30 +1,29 @@
-package common
+package swim
 
 import (
 	"fmt"
 
-	"github.com/clockworksoul/smudge"
 	log "github.com/sirupsen/logrus"
 )
 
+type listNode struct {
+	value *RingNode
+	next  *listNode
+}
+
 type SortedCircularLinkedList struct {
-	head *node
+	head *listNode
 }
 
 type RingNode struct {
-	Host          *smudge.Node
+	Host          *Node
 	Hash          uint32
 	Tokens        []uint32
 	IsCurrentNode bool
 }
 
-type node struct {
-	value *RingNode
-	next  *node
-}
-
 func (sll *SortedCircularLinkedList) Add(value *RingNode) {
-	newNode := &node{value: value}
+	newNode := &listNode{value: value}
 	head := sll.head
 	newValue := value.Hash
 	if head == nil {
