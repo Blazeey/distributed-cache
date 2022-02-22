@@ -72,10 +72,6 @@ func InitMembershipServer(listenPort uint16, healthyNode string) *SwimService {
 		listeners: make([]MembershipStatusListener, 0),
 	}
 
-	currentNode := membership.addNode(CURRENT_IP, LISTEN_PORT, CURRENT_IP, LISTEN_PORT)
-	currentNode.statusSource = currentNode
-
-	membership.currentNode = currentNode
 	clientConnections := &SwimClientConnectionPool{
 		connections: make(map[string]SwimClient, 0),
 	}
@@ -90,7 +86,6 @@ func InitMembershipServer(listenPort uint16, healthyNode string) *SwimService {
 		go swimService.sendJoinRequest(ip, port)
 	}
 
-	go swimService.begin()
 	return swimService
 }
 
@@ -113,6 +108,22 @@ func (n *node) toNode() *Node {
 		isCurrentNode: n.isCurrentNode,
 	}
 	return newNode
+}
+
+func (n *Node) Address() string {
+	return common.GetAddress(n.ip.String(), n.port)
+}
+
+func (n *Node) IsCurrentNode() bool {
+	return n.isCurrentNode
+}
+
+func (n *Node) IP() net.IP {
+	return n.ip
+}
+
+func (n *Node) Port() uint16 {
+	return n.port
 }
 
 func (n *node) isValidProbeTarget() bool {

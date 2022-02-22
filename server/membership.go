@@ -1,9 +1,8 @@
 package server
 
 import (
-	"fmt"
-
 	"distributed-cache.io/common"
+	"distributed-cache.io/swim"
 	"github.com/clockworksoul/smudge"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,7 +17,7 @@ type MembershipConfig struct {
 }
 
 type StatusChangeListener struct {
-	smudge.StatusListener
+	swim.MembershipStatusListener
 }
 
 type BroadcastListener struct {
@@ -29,40 +28,40 @@ type LogrusLogger struct {
 }
 
 type TokenRing struct {
-	nodes *common.SortedCircularLinkedList
+	nodes *swim.SortedCircularLinkedList
 }
 
 var tokenRing = TokenRing{
-	nodes: new(common.SortedCircularLinkedList),
+	nodes: new(swim.SortedCircularLinkedList),
 }
 
-func newRingNode(node *smudge.Node) *common.RingNode {
+func newRingNode(node *swim.Node) *swim.RingNode {
 	hash, tokens := getTokens(node.Address())
-	ringNode := &common.RingNode{
+	ringNode := &swim.RingNode{
 		Host:          node,
 		Hash:          hash,
 		Tokens:        tokens,
-		IsCurrentNode: node.Address() == fmt.Sprintf("%s:%d", common.CurrentIP.String(), smudge.GetListenPort()),
+		IsCurrentNode: node.IsCurrentNode(),
 	}
 	return ringNode
 }
 
-func (ring TokenRing) isNodePresentInRing(node *common.RingNode) (exist bool) {
+func (ring TokenRing) isNodePresentInRing(node *swim.RingNode) (exist bool) {
 	return ring.nodes.IsValueExist(node)
 }
 
-func (ring TokenRing) addNode(node *common.RingNode) {
+func (ring TokenRing) addNode(node *swim.RingNode) {
 	ring.nodes.Add(node)
 }
 
-func (ring TokenRing) getAssignedNode(hash uint32) *common.RingNode {
+func (ring TokenRing) getAssignedNode(hash uint32) *swim.RingNode {
 	return ring.nodes.GetNodeWithGreaterOrEqualHash(hash)
 }
 
-func (l StatusChangeListener) OnChange(node *smudge.Node, status smudge.NodeStatus) {
+func (l StatusChangeListener) OnChange(node *swim.Node, status swim.Status) {
 	log.Infof("Node %s is now status %s", node.Address(), status)
 	ringNode := newRingNode(node)
-	if status == smudge.StatusAlive && !tokenRing.isNodePresentInRing(ringNode) {
+	if status == swim.ALIVE && !tokenRing.isNodePresentInRing(ringNode) {
 		log.Infof("Adding node %s to the ring", node.Address())
 		tokenRing.addNode(ringNode)
 	}
@@ -75,10 +74,6 @@ func getTokens(host string) (hash uint32, tokens []uint32) {
 	return
 }
 
-func (m BroadcastListener) OnBroadcast(b *smudge.Broadcast) {
-	log.Infof("Received broadcast from %s: %s", b.Origin().Address(), string(b.Bytes()))
-}
-
 func InitMembershipServer(config MembershipConfig) {
 
 	smudge.SetLogger(LogrusLogger{})
@@ -86,8 +81,8 @@ func InitMembershipServer(config MembershipConfig) {
 	smudge.SetHeartbeatMillis(HEARBEAT_MS)
 	smudge.SetListenIP(common.CurrentIP)
 
-	smudge.AddStatusListener(StatusChangeListener{})
-	smudge.AddBroadcastListener(BroadcastListener{})
+	// smudge.AddStatusListener(StatusChangeListener{})
+	// smudge.AddBroadcastListener(BroadcastListener{})
 
 	if config.healthyNode != "" {
 		node, err := smudge.CreateNodeByAddress(config.healthyNode)

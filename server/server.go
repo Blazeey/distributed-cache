@@ -70,6 +70,7 @@ func InitServer(config ServerConfig) Server {
 	cacheService := &cache.CacheService{Cache: localCache}
 
 	swimService := swim.InitMembershipServer(uint16(config.grpcPort), config.healthyNode)
+	swimService.AddStatusChangeListener(StatusChangeListener{})
 
 	server.grpcServer = grpcServer
 	server.requestHandler = &RequestHandler{
@@ -84,6 +85,7 @@ func InitServer(config ServerConfig) Server {
 
 	go startCodecServer(server)
 	go startGrpcServer(server)
+	go swimService.Begin()
 	// go InitMembershipServer(MembershipConfig{
 	// 	listenPort:  config.membershipPort,
 	// 	healthyNode: config.healthyNode,
@@ -145,6 +147,12 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 }
 
 // {"op":"GET","key":"b"}
+// {"op":"GET","key":"a"}
+// {"op":"GET","key":"c"}
+// {"op":"GET","key":"d"}
+// {"op":"GET","key":"e"}
+// {"op":"GET","key":"f"}
+// {"op":"GET","key":"fffffffffffff"}
 // {"op":"PUT","key":"LOL","value":"123456"}
 // {"op":"PUT","key":"LMAO","value":"abcde"}
 // {"op":"GET","key":"LOL"}

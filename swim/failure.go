@@ -13,7 +13,11 @@ const SUSPECTED_TIME_PERIOD = time.Millisecond * 200
 const DEAD_TIME_PERIOD = time.Millisecond * 200
 const K_VALUE = 3
 
-func (s SwimService) begin() {
+func (s SwimService) Begin() {
+
+	currentNode := s.membershipList.addNode(CURRENT_IP, LISTEN_PORT, CURRENT_IP, LISTEN_PORT)
+	currentNode.statusSource = currentNode
+	s.membershipList.currentNode = currentNode
 
 	log.Infoln("Started failure detection")
 	ticker := time.NewTicker(PROTOCOL_PERIOD)
