@@ -23,6 +23,8 @@ type SwimClient interface {
 	SecondaryPing(ctx context.Context, in *SecondaryPingRequest, opts ...grpc.CallOption) (*SecondaryPingResponse, error)
 	AddNode(ctx context.Context, in *NodeAdditionRequest, opts ...grpc.CallOption) (*NodeAdditionResponse, error)
 	RemoveNode(ctx context.Context, in *NodeRemovalRequest, opts ...grpc.CallOption) (*NodeRemovalResponse, error)
+	SuspectNode(ctx context.Context, in *SuspectNodeRequest, opts ...grpc.CallOption) (*SuspectNodeResponse, error)
+	DeadNode(ctx context.Context, in *DeadNodeRequest, opts ...grpc.CallOption) (*DeadNodeResponse, error)
 }
 
 type swimClient struct {
@@ -78,6 +80,24 @@ func (c *swimClient) RemoveNode(ctx context.Context, in *NodeRemovalRequest, opt
 	return out, nil
 }
 
+func (c *swimClient) SuspectNode(ctx context.Context, in *SuspectNodeRequest, opts ...grpc.CallOption) (*SuspectNodeResponse, error) {
+	out := new(SuspectNodeResponse)
+	err := c.cc.Invoke(ctx, "/swim.Swim/SuspectNode", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *swimClient) DeadNode(ctx context.Context, in *DeadNodeRequest, opts ...grpc.CallOption) (*DeadNodeResponse, error) {
+	out := new(DeadNodeResponse)
+	err := c.cc.Invoke(ctx, "/swim.Swim/DeadNode", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SwimServer is the server API for Swim service.
 // All implementations must embed UnimplementedSwimServer
 // for forward compatibility
@@ -87,6 +107,8 @@ type SwimServer interface {
 	SecondaryPing(context.Context, *SecondaryPingRequest) (*SecondaryPingResponse, error)
 	AddNode(context.Context, *NodeAdditionRequest) (*NodeAdditionResponse, error)
 	RemoveNode(context.Context, *NodeRemovalRequest) (*NodeRemovalResponse, error)
+	SuspectNode(context.Context, *SuspectNodeRequest) (*SuspectNodeResponse, error)
+	DeadNode(context.Context, *DeadNodeRequest) (*DeadNodeResponse, error)
 	mustEmbedUnimplementedSwimServer()
 }
 
@@ -108,6 +130,12 @@ func (UnimplementedSwimServer) AddNode(context.Context, *NodeAdditionRequest) (*
 }
 func (UnimplementedSwimServer) RemoveNode(context.Context, *NodeRemovalRequest) (*NodeRemovalResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RemoveNode not implemented")
+}
+func (UnimplementedSwimServer) SuspectNode(context.Context, *SuspectNodeRequest) (*SuspectNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SuspectNode not implemented")
+}
+func (UnimplementedSwimServer) DeadNode(context.Context, *DeadNodeRequest) (*DeadNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeadNode not implemented")
 }
 func (UnimplementedSwimServer) mustEmbedUnimplementedSwimServer() {}
 
@@ -212,6 +240,42 @@ func _Swim_RemoveNode_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Swim_SuspectNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SuspectNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SwimServer).SuspectNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/swim.Swim/SuspectNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SwimServer).SuspectNode(ctx, req.(*SuspectNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Swim_DeadNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeadNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SwimServer).DeadNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/swim.Swim/DeadNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SwimServer).DeadNode(ctx, req.(*DeadNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Swim_ServiceDesc is the grpc.ServiceDesc for Swim service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -238,6 +302,14 @@ var Swim_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveNode",
 			Handler:    _Swim_RemoveNode_Handler,
+		},
+		{
+			MethodName: "SuspectNode",
+			Handler:    _Swim_SuspectNode_Handler,
+		},
+		{
+			MethodName: "DeadNode",
+			Handler:    _Swim_DeadNode_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

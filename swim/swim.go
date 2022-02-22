@@ -33,11 +33,24 @@ type MembershipList struct {
 	nodes       []*node
 	currentNode *node
 	probeIndex  uint32
+	listeners   []MembershipStatusListener
 }
 
 type MembershipConfig struct {
 	ListenPort  int
 	HealthyNode string
+}
+
+type Node struct {
+	ip            net.IP
+	port          uint16
+	hash          uint32
+	status        Status
+	isCurrentNode bool
+}
+
+type MembershipStatusListener interface {
+	OnChange(node *Node, status Status)
 }
 
 var CURRENT_IP string
@@ -52,10 +65,11 @@ func InitMembershipServer(listenPort uint16, healthyNode string) *SwimService {
 	CURRENT_IP = ip
 	LISTEN_PORT = port
 	CURRENT_HOST = *getHost(ip, port)
-	CURRENT_NODE_HASH = common.Murmur3(common.GetAddress(CURRENT_IP, LISTEN_PORT))
+	CURRENT_NODE_HASH = common.Hash(CURRENT_IP, LISTEN_PORT)
 
 	membership := &MembershipList{
-		nodesMap: make(map[uint32]*node),
+		nodesMap:  make(map[uint32]*node),
+		listeners: make([]MembershipStatusListener, 0),
 	}
 
 	currentNode := membership.addNode(CURRENT_IP, LISTEN_PORT, CURRENT_IP, LISTEN_PORT)
@@ -80,8 +94,29 @@ func InitMembershipServer(listenPort uint16, healthyNode string) *SwimService {
 	return swimService
 }
 
-func (n *node) format() {
-	log.Infof("%s:%d\t%11d\t%10s\t%d\t%s:%d\t%t", n.ip, n.port, n.hash, n.status, n.latestPing, n.statusSource.ip, n.statusSource.port, n.isCurrentNode)
+func (n *node) String() string {
+	sourceIp := "none"
+	sourcePort := 0
+	if n.statusSource != nil {
+		sourceIp = n.statusSource.ip.String()
+		sourcePort = int(n.statusSource.port)
+	}
+	return fmt.Sprintf("%s:%d\t%11d\t%10s\t%d\t%s:%d\t%t", n.ip, n.port, n.hash, n.status, n.latestPing, sourceIp, sourcePort, n.isCurrentNode)
+}
+
+func (n *node) toNode() *Node {
+	newNode := &Node{
+		ip:            n.ip,
+		port:          n.port,
+		hash:          n.hash,
+		status:        n.status,
+		isCurrentNode: n.isCurrentNode,
+	}
+	return newNode
+}
+
+func (n *node) isValidProbeTarget() bool {
+	return !n.isCurrentNode && n.status != DEAD
 }
 
 func (n *node) hashIn(hashes ...uint32) bool {
@@ -91,6 +126,10 @@ func (n *node) hashIn(hashes ...uint32) bool {
 		}
 	}
 	return false
+}
+
+func (n *node) markDead() {
+	n.status = DEAD
 }
 
 func (s Status) String() string {
@@ -105,8 +144,7 @@ func (m *MembershipList) updateLatestPing(hash uint32) {
 }
 
 func (m *MembershipList) addNode(ip string, port uint16, sourceIp string, sourcePort uint16) *node {
-	address := common.GetAddress(ip, port)
-	hash := common.Murmur3(address)
+	hash := common.Hash(ip, port)
 	newNode := &node{
 		ip:            net.ParseIP(ip),
 		port:          port,
@@ -119,24 +157,30 @@ func (m *MembershipList) addNode(ip string, port uint16, sourceIp string, source
 	newNode.statusSource = m.nodesMap[sourceNodeHash]
 	m.nodesMap[hash] = newNode
 	m.nodes = append(m.nodes, newNode)
+	m.updateListeners(newNode, ALIVE)
 	return newNode
 }
 
 func (m *MembershipList) addMemberNode(n *node) {
 	m.nodesMap[n.hash] = n
 	m.nodes = append(m.nodes, n)
+	m.updateListeners(n, n.status)
 }
 
 func (m *MembershipList) removeNode(ip string, port uint16) {
 	address := common.GetAddress(ip, port)
 	hash := common.Murmur3(address)
+	n := m.nodesMap[hash]
 	delete(m.nodesMap, hash)
+	m.updateListeners(n, DEAD)
 }
 
-func (m *MembershipList) getGroupList() []*node {
+func (m *MembershipList) getGroupList(ignoreNodes ...uint32) []*node {
 	nodes := make([]*node, 0, len(m.nodesMap))
 	for _, node := range m.nodesMap {
-		nodes = append(nodes, node)
+		if !node.hashIn(ignoreNodes...) && node.status != DEAD {
+			nodes = append(nodes, node)
+		}
 	}
 	return nodes
 }
@@ -149,7 +193,7 @@ func (m *MembershipList) updateStatusSource(nodeHash uint32, statusSourcehash ui
 func (m *MembershipList) getProbeTarget() *node {
 	probeIndex := m.probeIndex
 	probeNode := m.nodes[probeIndex]
-	if probeNode.isCurrentNode {
+	if !probeNode.isValidProbeTarget() {
 		m.updateNextProbeTarget()
 		probeIndex = m.probeIndex
 		probeNode = m.nodes[probeIndex]
@@ -160,13 +204,11 @@ func (m *MembershipList) getProbeTarget() *node {
 func (m *MembershipList) updateNextProbeTarget() {
 	groupLength := len(m.nodes)
 	var nextProbeIndex = m.probeIndex + 1
-
 	for {
 		if nextProbeIndex == uint32(groupLength) {
-			// Shuffle the list
 			nextProbeIndex = 0
 			m.shuffleNodes()
-		} else if m.nodes[nextProbeIndex].isCurrentNode {
+		} else if !m.nodes[nextProbeIndex].isValidProbeTarget() {
 			nextProbeIndex++
 		} else {
 			break
@@ -201,7 +243,7 @@ func (m *MembershipList) getAllNodes() []*node {
 func (m *MembershipList) getOtherNodes(ignoreNodes ...uint32) []*node {
 	nodes := make([]*node, 0, len(m.nodes)-1)
 	for _, n := range m.nodes {
-		if !n.isCurrentNode && n.hashIn(ignoreNodes...) {
+		if !n.isCurrentNode && !n.hashIn(ignoreNodes...) && n.status != DEAD {
 			nodes = append(nodes, n)
 		}
 	}
@@ -210,14 +252,38 @@ func (m *MembershipList) getOtherNodes(ignoreNodes ...uint32) []*node {
 
 func (m *MembershipList) suspectNode(hash uint32) {
 	node := m.nodesMap[hash]
-	node.status = SUSPECTED
-	log.Warnf("Suspecting Node %s:%d failed", node.ip, node.port)
-	m.printMembership()
+	if node.status != SUSPECTED && node.status != DEAD {
+		node.status = SUSPECTED
+		log.Warnf("Suspecting Node %s:%d failed", node.ip, node.port)
+		m.printMembership()
+		m.updateListeners(node, SUSPECTED)
+	}
+}
+
+func (m *MembershipList) markNodeDead(hash uint32) {
+	node := m.nodesMap[hash]
+	node.markDead()
+	if node.status != DEAD {
+		node.status = DEAD
+		log.Errorf("Marking Node %s:%d as dead", node.ip, node.port)
+		m.printMembership()
+		m.updateListeners(node, DEAD)
+	}
 }
 
 func (m *MembershipList) printMembership() {
 	log.Info("Printing Membership Info")
 	for _, n := range m.nodesMap {
-		n.format()
+		log.Infoln(n)
+	}
+}
+
+func (m *MembershipList) addStatusChangeListener(listener MembershipStatusListener) {
+	m.listeners = append(m.listeners, listener)
+}
+
+func (m *MembershipList) updateListeners(n *node, status Status) {
+	for _, l := range m.listeners {
+		l.OnChange(n.toNode(), status)
 	}
 }

@@ -8,8 +8,6 @@ import (
 
 	"distributed-cache.io/common"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type SwimService struct {
@@ -62,6 +60,24 @@ func (s SwimService) RemoveNode(ctx context.Context, in *NodeRemovalRequest) (*N
 	s.membershipList.removeNode(in.RemovedNode.Ip, uint16(in.RemovedNode.Port))
 	s.printMembership()
 	return &NodeRemovalResponse{
+		Code: ResponseCode_SUCCESS,
+	}, nil
+}
+
+func (s SwimService) SuspectNode(ctx context.Context, in *SuspectNodeRequest) (*SuspectNodeResponse, error) {
+	log.Infof("Received SuspectNode Request from %s:%d", in.Source.Ip, in.Source.Port)
+	hash := common.Hash(in.SuspectedNode.Ip, uint16(in.SuspectedNode.Port))
+	s.membershipList.suspectNode(hash)
+	return &SuspectNodeResponse{
+		Code: ResponseCode_SUCCESS,
+	}, nil
+}
+
+func (s SwimService) DeadNode(ctx context.Context, in *DeadNodeRequest) (*DeadNodeResponse, error) {
+	log.Infof("Received DeadNode Request from %s:%d", in.Source.Ip, in.Source.Port)
+	hash := common.Hash(in.DeadNode.Ip, uint16(in.DeadNode.Port))
+	s.membershipList.markNodeDead(hash)
+	return &DeadNodeResponse{
 		Code: ResponseCode_SUCCESS,
 	}, nil
 }
@@ -129,7 +145,28 @@ func (s SwimService) sendJoinRequest(ip string, port uint16) {
 		log.Errorf("ERROR sending join request to %s:%d", ip, port, err)
 	}
 	s.updateGroupMembership(response.GroupMembershipList)
-	s.printMembership()
+}
+
+func (s SwimService) sendSuspectedMessages(ip string, port uint32, hash uint32) {
+	nodes := s.membershipList.getOtherNodes(hash)
+	var wg sync.WaitGroup
+	for _, n := range nodes {
+		wg.Add(1)
+		client := s.client.getRemoteConnection(n.ip.String(), n.port)
+		go sendSuspectNodeRequest(ip, port, &wg, client)
+	}
+	wg.Wait()
+}
+
+func (s SwimService) sendDeadMessages(ip string, port uint32, hash uint32) {
+	nodes := s.membershipList.getOtherNodes(hash)
+	var wg sync.WaitGroup
+	for _, n := range nodes {
+		wg.Add(1)
+		client := s.client.getRemoteConnection(n.ip.String(), n.port)
+		go sendDeadNodeRequest(ip, port, &wg, client)
+	}
+	wg.Wait()
 }
 
 func (s SwimService) updateGroupMembership(list []*NodeDetails) {
@@ -192,8 +229,7 @@ func mapNodeToNodeDetails(n *node) *NodeDetails {
 func getHostIdentifiers(h *Host) (ip net.IP, port uint16, hash uint32) {
 	ip = net.ParseIP(h.Ip)
 	port = uint16(h.Port)
-	address := common.GetAddress(ip.String(), port)
-	hash = common.Murmur3(address)
+	hash = common.Hash(ip.String(), port)
 	return
 }
 
@@ -221,13 +257,30 @@ func sendAddNodeRequests(addedNodeIp string, addedNodePort uint32, wg *sync.Wait
 	wg.Done()
 }
 
-func handleError(err error) {
-
-	errStatus, _ := status.FromError(err)
-	log.Infoln(errStatus.Message())
-	log.Infoln(errStatus.Code())
-	if codes.InvalidArgument == errStatus.Code() {
-		// do your stuff here
-		log.Fatal()
+func sendSuspectNodeRequest(suspectedNodeIp string, suspectedNodePort uint32, wg *sync.WaitGroup, client SwimClient) {
+	log.Infof("Sending SuspectNode request to %s:%d", suspectedNodeIp, suspectedNodePort)
+	ctx, cancel := context.WithTimeout(context.Background(), SUSPECTED_TIME_PERIOD)
+	defer cancel()
+	request := &SuspectNodeRequest{
+		Source:        &CURRENT_HOST,
+		SuspectedNode: getHost(suspectedNodeIp, uint16(suspectedNodePort)),
 	}
+	client.SuspectNode(ctx, request)
+	wg.Done()
+}
+
+func sendDeadNodeRequest(deadNodeIp string, deadNodePort uint32, wg *sync.WaitGroup, client SwimClient) {
+	log.Infof("Sending DeadNode request to %s:%d", deadNodeIp, deadNodePort)
+	ctx, cancel := context.WithTimeout(context.Background(), DEAD_TIME_PERIOD)
+	defer cancel()
+	request := &DeadNodeRequest{
+		Source:   &CURRENT_HOST,
+		DeadNode: getHost(deadNodeIp, uint16(deadNodePort)),
+	}
+	client.DeadNode(ctx, request)
+	wg.Done()
+}
+
+func (s SwimService) AddStatusChangeListener(listener MembershipStatusListener) {
+	s.membershipList.addStatusChangeListener(listener)
 }

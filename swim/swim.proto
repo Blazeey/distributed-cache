@@ -10,6 +10,8 @@ service Swim {
     rpc SecondaryPing(SecondaryPingRequest) returns (SecondaryPingResponse) {}
     rpc AddNode(NodeAdditionRequest) returns (NodeAdditionResponse) {}
     rpc RemoveNode(NodeRemovalRequest) returns (NodeRemovalResponse) {}
+    rpc SuspectNode(SuspectNodeRequest) returns (SuspectNodeResponse) {}
+    rpc DeadNode(DeadNodeRequest) returns (DeadNodeResponse) {}
 }
 
 enum ResponseCode {
@@ -78,4 +80,22 @@ message JoinRequest {
 message JoinResponse {
     ResponseCode code                        = 1;
     repeated NodeDetails groupMembershipList = 2;
+}
+
+message SuspectNodeRequest {
+    Host source        = 1;
+    Host suspectedNode = 2;
+}
+
+message SuspectNodeResponse {
+    ResponseCode code = 1;
+}
+
+message DeadNodeRequest {
+    Host source   = 1;
+    Host deadNode = 2;
+}
+
+message DeadNodeResponse {
+    ResponseCode code = 1;
 }

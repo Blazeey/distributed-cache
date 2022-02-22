@@ -38,6 +38,11 @@ func getOutboundIP() net.IP {
 	return localAddr.IP
 }
 
+func Hash(ip string, port uint16) uint32 {
+	address := GetAddress(ip, port)
+	return Murmur3(address)
+}
+
 func Murmur3(key string) uint32 {
 
 	data := []byte(key)
