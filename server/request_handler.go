@@ -7,6 +7,7 @@ import (
 
 	"distributed-cache.io/cache"
 	"distributed-cache.io/common"
+	"distributed-cache.io/swim"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -15,6 +16,7 @@ import (
 type RequestHandler struct {
 	connections map[uint32]cache.CacheClient
 	cache       *cache.CacheService
+	swim        *swim.SwimService
 }
 
 func (handler RequestHandler) processMessage(message Message) (response Response) {
@@ -23,6 +25,10 @@ func (handler RequestHandler) processMessage(message Message) (response Response
 		return handler.processGetRequest(message)
 	} else if message.Op == "PUT" {
 		return handler.processPutRequest(message)
+	} else if message.Op == "LIST" {
+
+	} else if message.Op == "GET_RING" {
+		return handler.processGetRingRequest(message)
 	}
 	return Response{
 		Message: "Invalid operation",
@@ -79,6 +85,14 @@ func (handler RequestHandler) processPutRequest(message Message) (response Respo
 	return Response{
 		Message: cacheResponse.Message,
 		Code:    cacheResponse.Code,
+	}
+}
+
+func (handler RequestHandler) processGetRingRequest(message Message) (response Response) {
+	tokenRing.nodes.PrintNodes()
+	return Response{
+		Message: "",
+		Code:    200,
 	}
 }
 

@@ -32,12 +32,14 @@ type ServerConfig struct {
 	grpcPort       int
 	multicore      bool
 	healthyNode    string
+	numTokens      int
 }
 
 const (
-	PUT  Operation = "PUT"
-	GET  Operation = "GET"
-	LIST Operation = "LIST"
+	PUT      Operation = "PUT"
+	GET      Operation = "GET"
+	LIST     Operation = "LIST"
+	GET_RING Operation = "GET_RING"
 )
 
 type Message struct {
@@ -69,13 +71,14 @@ func InitServer(config ServerConfig) Server {
 	grpcServer := grpc.NewServer()
 	cacheService := &cache.CacheService{Cache: localCache}
 
-	swimService := swim.InitMembershipServer(uint16(config.grpcPort), config.healthyNode)
+	swimService := swim.InitMembershipServer(uint16(config.grpcPort), config.healthyNode, config.numTokens)
 	swimService.AddStatusChangeListener(StatusChangeListener{})
 
 	server.grpcServer = grpcServer
 	server.requestHandler = &RequestHandler{
 		connections: make(map[uint32]cache.CacheClient),
 		cache:       cacheService,
+		swim:        swimService,
 	}
 	cache.RegisterCacheServer(grpcServer, cacheService)
 	swim.RegisterSwimServer(grpcServer, swimService)
@@ -86,10 +89,6 @@ func InitServer(config ServerConfig) Server {
 	go startCodecServer(server)
 	go startGrpcServer(server)
 	go swimService.Begin()
-	// go InitMembershipServer(MembershipConfig{
-	// 	listenPort:  config.membershipPort,
-	// 	healthyNode: config.healthyNode,
-	// })
 
 	wg.Wait()
 	return *server
@@ -159,3 +158,5 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 // {"op":"GET","key":"LMAO"}
 // {"op":"GET","key":"LOLIIFOXX"}
 // {"op":"PUT","key":"LOLIIFOXX","value":"HELLO WHASSSSSSUPPP - DISTRIBUTED CACHE"}
+
+// {"op":"GET_RING"}

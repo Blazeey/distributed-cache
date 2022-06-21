@@ -94,3 +94,12 @@ func Murmur3(key string) uint32 {
 
 	return h1
 }
+
+func GetTokens(key string, numTokens int) []uint32 {
+	var tokens []uint32 = make([]uint32, numTokens)
+	for i := 0; i < numTokens; i++ {
+		tokens[i] = Murmur3(key)
+		key = fmt.Sprintf("%d", tokens[i])
+	}
+	return tokens
+}

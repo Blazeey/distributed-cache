@@ -29,6 +29,7 @@ enum NodeStatus {
 message Host {
     string ip   = 1;
     uint32 port = 2;
+    repeated uint32 tokens = 3;
 }
 
 message PingRequest {
@@ -51,6 +52,7 @@ message SecondaryPingResponse {
 message NodeAdditionRequest {
     Host source    = 1;
     Host addedNode = 2;
+    repeated uint32 tokens = 3;
 }
 
 message NodeAdditionResponse {
@@ -75,6 +77,7 @@ message NodeDetails {
 
 message JoinRequest {
     Host source = 1;
+    repeated uint32 tokens = 2;
 }
 
 message JoinResponse {

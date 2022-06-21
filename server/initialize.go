@@ -7,7 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Initialize(port int, multicore bool, healthyNode string, membershipPort int, grpcPort int) {
+func Initialize(port int, multicore bool, healthyNode string, membershipPort int, grpcPort int, numTokens int) {
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors:   false,
 		FullTimestamp:   true,
@@ -21,6 +21,7 @@ func Initialize(port int, multicore bool, healthyNode string, membershipPort int
 		grpcPort:       grpcPort,
 		multicore:      multicore,
 		healthyNode:    healthyNode,
+		numTokens:      numTokens,
 	}
 
 	InitServer(serverConfig)

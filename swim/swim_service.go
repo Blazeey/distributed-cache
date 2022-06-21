@@ -45,10 +45,10 @@ func (s SwimService) SecondaryPing(ctx context.Context, in *SecondaryPingRequest
 }
 
 func (s SwimService) AddNode(ctx context.Context, in *NodeAdditionRequest) (*NodeAdditionResponse, error) {
-	log.Infof("Received AddNode Request from %s:%d", in.Source.Ip, in.Source.Port)
+	log.Infof("Received AddNode Request from %s:%d with %d tokens", in.Source.Ip, in.Source.Port, len(in.AddedNode.Tokens))
 	addedNode := in.AddedNode
 	source := in.Source
-	s.membershipList.addNode(addedNode.Ip, uint16(addedNode.Port), source.Ip, uint16(source.Port))
+	s.membershipList.addNode(addedNode.Ip, uint16(addedNode.Port), source.Ip, uint16(source.Port), in.AddedNode.Tokens)
 	s.printMembership()
 	return &NodeAdditionResponse{
 		Code: ResponseCode_SUCCESS,
@@ -83,16 +83,16 @@ func (s SwimService) DeadNode(ctx context.Context, in *DeadNodeRequest) (*DeadNo
 }
 
 func (s SwimService) Join(ctx context.Context, in *JoinRequest) (*JoinResponse, error) {
-	log.Infof("Received Join Request from %s:%d", in.Source.Ip, in.Source.Port)
+	log.Infof("Received Join Request from %s:%d with %d tokens", in.Source.Ip, in.Source.Port, len(in.Tokens))
 	nodes := s.membershipList.getGroupList()
-	s.membershipList.addNode(in.Source.Ip, uint16(in.Source.Port), CURRENT_IP, LISTEN_PORT) // TODO: Check the timeout
+	s.membershipList.addNode(in.Source.Ip, uint16(in.Source.Port), CURRENT_IP, LISTEN_PORT, in.Tokens) // TODO: Check the timeout
 
 	var wg sync.WaitGroup
 	for _, node := range nodes {
 		if !node.isCurrentNode {
 			wg.Add(1)
 			client := s.client.getRemoteConnection(node.ip.String(), node.port)
-			go sendAddNodeRequests(in.Source.Ip, uint32(in.Source.Port), &wg, client)
+			go sendAddNodeRequests(in.Source.Ip, uint32(in.Source.Port), in.Tokens, &wg, client)
 		}
 	}
 	wg.Wait()
@@ -133,13 +133,14 @@ func (s SwimService) sendSecondaryPingRequest(ip string, port uint16, pingTarget
 	return err == nil && response.Code == ResponseCode_SUCCESS
 }
 
-func (s SwimService) sendJoinRequest(ip string, port uint16) {
+func (s SwimService) sendJoinRequest(ip string, port uint16, tokens []uint32) {
 	client := s.client.getRemoteConnection(ip, port)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	log.Infof("Sending Join Request to %s:%d", ip, port)
 	response, err := client.Join(ctx, &JoinRequest{
 		Source: &CURRENT_HOST,
+		Tokens: tokens,
 	})
 	if err != nil {
 		log.Errorf("ERROR sending join request to %s:%d", ip, port, err)
@@ -190,6 +191,10 @@ func (s SwimService) printMembership() {
 	s.membershipList.printMembership()
 }
 
+func (s SwimService) GetMembershipInfo() string {
+	return s.membershipList.getMembershipInfo()
+}
+
 func mapNodeDetails(n *NodeDetails) *node {
 	ip, port, hash := getHostIdentifiers(n.Host)
 	status := Status(n.Status)
@@ -204,6 +209,7 @@ func mapNodeDetails(n *NodeDetails) *node {
 		status:        status,
 		latestPing:    n.LatestPing,
 		isCurrentNode: isCurrentNode,
+		tokens:        n.Host.Tokens,
 	}
 }
 
@@ -219,7 +225,7 @@ func mapNodesToNodeDetails(nodes []*node) []*NodeDetails {
 
 func mapNodeToNodeDetails(n *node) *NodeDetails {
 	return &NodeDetails{
-		Host:         getHost(n.ip.String(), n.port),
+		Host:         getHostWithTokens(n.ip.String(), n.port, n.tokens),
 		Status:       NodeStatus(n.status),
 		LatestPing:   n.latestPing,
 		StatusSource: getHost(n.statusSource.ip.String(), n.statusSource.port),
@@ -240,7 +246,15 @@ func getHost(ip string, port uint16) *Host {
 	}
 }
 
-func sendAddNodeRequests(addedNodeIp string, addedNodePort uint32, wg *sync.WaitGroup, client SwimClient) {
+func getHostWithTokens(ip string, port uint16, tokens []uint32) *Host {
+	return &Host{
+		Ip:     ip,
+		Port:   uint32(port),
+		Tokens: tokens,
+	}
+}
+
+func sendAddNodeRequests(addedNodeIp string, addedNodePort uint32, tokens []uint32, wg *sync.WaitGroup, client SwimClient) {
 	secondaryCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -250,8 +264,9 @@ func sendAddNodeRequests(addedNodeIp string, addedNodePort uint32, wg *sync.Wait
 			Port: uint32(LISTEN_PORT),
 		},
 		AddedNode: &Host{
-			Ip:   addedNodeIp,
-			Port: addedNodePort,
+			Ip:     addedNodeIp,
+			Port:   addedNodePort,
+			Tokens: tokens,
 		},
 	})
 	wg.Done()

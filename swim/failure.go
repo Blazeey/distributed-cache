@@ -15,7 +15,7 @@ const K_VALUE = 3
 
 func (s SwimService) Begin() {
 
-	currentNode := s.membershipList.addNode(CURRENT_IP, LISTEN_PORT, CURRENT_IP, LISTEN_PORT)
+	currentNode := s.membershipList.addNode(CURRENT_IP, LISTEN_PORT, CURRENT_IP, LISTEN_PORT, CURRENT_NODE_TOKENS)
 	currentNode.statusSource = currentNode
 	s.membershipList.currentNode = currentNode
 
