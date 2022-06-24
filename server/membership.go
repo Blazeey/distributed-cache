@@ -61,5 +61,5 @@ func (l StatusChangeListener) OnChange(node *swim.Node, status swim.Status) {
 		log.Infof("Removing node %s from the ring", node.Address())
 		tokenRing.removeNode(ringNode)
 	}
-	tokenRing.nodes.PrintNodes()
+	// tokenRing.nodes.PrintNodes()
 }

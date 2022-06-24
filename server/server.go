@@ -11,6 +11,7 @@ import (
 
 	"distributed-cache.io/cache"
 	"distributed-cache.io/common"
+	"distributed-cache.io/persistence"
 	"distributed-cache.io/swim"
 	"github.com/panjf2000/gnet"
 )
@@ -24,6 +25,7 @@ type Server struct {
 	multicore      bool
 	grpcServer     *grpc.Server
 	requestHandler *RequestHandler
+	persistence    *persistence.PersistenceManager
 }
 
 type ServerConfig struct {
@@ -33,6 +35,7 @@ type ServerConfig struct {
 	multicore      bool
 	healthyNode    string
 	numTokens      int
+	dbLog          string
 }
 
 const (
@@ -74,6 +77,17 @@ func InitServer(config ServerConfig) Server {
 	swimService := swim.InitMembershipServer(uint16(config.grpcPort), config.healthyNode, config.numTokens)
 	swimService.AddStatusChangeListener(StatusChangeListener{})
 
+	persistenceConfig := persistence.PersistenceConfig{
+		LoggerConfig: &persistence.LoggerConfig{
+			FilePath: config.dbLog,
+		},
+	}
+	persistenceManager := persistence.PersistenceManager{
+		Config: persistenceConfig,
+		Cache:  cacheService,
+	}
+
+	server.persistence = &persistenceManager
 	server.grpcServer = grpcServer
 	server.requestHandler = &RequestHandler{
 		connections: make(map[uint32]cache.CacheClient),
@@ -86,6 +100,7 @@ func InitServer(config ServerConfig) Server {
 	wg := new(sync.WaitGroup)
 	wg.Add(5)
 
+	go persistenceManager.Initialize()
 	go startCodecServer(server)
 	go startGrpcServer(server)
 	go swimService.Begin()
@@ -136,11 +151,22 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 	var message Message
 	json.Unmarshal(frame, &message)
 	log.Infof("Local Address: %s, Remote Address: %s, Message : %s", c.LocalAddr().String(), c.RemoteAddr().String(), message.String())
+	if message.Op == PUT {
+		s.persistence.WriteLog(getPersistenceMessage(message, c))
+	}
 	response := s.requestHandler.processMessage(message)
 	log.Infof("Response: %s", response.String())
 	out, err := json.Marshal(response)
 	if err != nil {
 		log.Panicf("ERROR Unmarshalling, %s", response.String())
+	}
+	return
+}
+
+func getPersistenceMessage(message Message, c gnet.Conn) (p persistence.PersistenceMessage) {
+	p = persistence.PersistenceMessage{
+		Key:   message.Key,
+		Value: message.Value,
 	}
 	return
 }
@@ -158,5 +184,6 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 // {"op":"GET","key":"LMAO"}
 // {"op":"GET","key":"LOLIIFOXX"}
 // {"op":"PUT","key":"LOLIIFOXX","value":"HELLO WHASSSSSSUPPP - DISTRIBUTED CACHE"}
+// {"op":"PUT","key":"LOLIIFOXX","value":"HOLA"}
 
 // {"op":"GET_RING"}
