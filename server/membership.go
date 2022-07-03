@@ -17,11 +17,13 @@ type LogrusLogger struct {
 }
 
 type TokenRing struct {
-	nodes *swim.SortedCircularLinkedList
+	nodes        *swim.SortedCircularLinkedList
+	nodeTokenMap map[uint32]*swim.RingNode
 }
 
 var tokenRing = TokenRing{
-	nodes: new(swim.SortedCircularLinkedList),
+	nodes:        new(swim.SortedCircularLinkedList),
+	nodeTokenMap: make(map[uint32]*swim.RingNode),
 }
 
 func newRingNode(node *swim.Node) *swim.RingNode {
@@ -34,19 +36,22 @@ func newRingNode(node *swim.Node) *swim.RingNode {
 	return ringNode
 }
 
-func (ring TokenRing) isNodePresentInRing(node *swim.RingNode) (exist bool) {
-	return ring.nodes.IsValueExist(node)
+func (ring *TokenRing) isNodePresentInRing(node *swim.RingNode) (exist bool) {
+	_, exist = ring.nodeTokenMap[node.Hash]
+	return
 }
 
-func (ring TokenRing) addNode(node *swim.RingNode) {
+func (ring *TokenRing) addNode(node *swim.RingNode) {
+	ring.nodeTokenMap[node.Hash] = node
 	ring.nodes.Add(node)
 }
 
-func (ring TokenRing) removeNode(node *swim.RingNode) {
+func (ring *TokenRing) removeNode(node *swim.RingNode) {
+	delete(ring.nodeTokenMap, node.Hash)
 	ring.nodes.Remove(node)
 }
 
-func (ring TokenRing) getAssignedNode(hash uint32) *swim.RingNode {
+func (ring *TokenRing) getAssignedNode(hash uint32) *swim.RingNode {
 	return ring.nodes.GetNodeWithGreaterOrEqualHash(hash)
 }
 
